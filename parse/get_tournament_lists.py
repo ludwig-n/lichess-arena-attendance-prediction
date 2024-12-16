@@ -2,8 +2,9 @@ import datetime
 import time
 
 import bs4
-import pandas as pd
 import requests
+
+import utils
 
 
 BASE_URL = "https://lichess.org/tournament/history"
@@ -21,15 +22,21 @@ CATEGORIES = [
 ]
 
 
-def get_tournaments(category, start_date, end_date, save_dir, request_interval=1):
+def get_tournaments(category, start_date, end_date, save_dir, overwrite=True, request_interval=1):
+    if overwrite:
+        fout = open(f"{save_dir}/{category}.tsv", "w")
+        print("id\tdate\tn_players\tname\tdetails", file=fout)
+    else:
+        fout = open(f"{save_dir}/{category}.tsv", "a")
     session = requests.Session()
     page = 0
-    results = []
+    n_loaded = 0
+    last_date_iso = None
     done = False
     while not done:
         page += 1
         time.sleep(request_interval)
-        response = session.get(f"{BASE_URL}/{category}", params={"page": page}).text
+        response = utils.try_get(session, f"{BASE_URL}/{category}", params={"page": page}).text
         rows = bs4.BeautifulSoup(response, "lxml").find_all("tr", {"class": "paginated"})
         if not rows:    # out of tournaments
             break
@@ -42,21 +49,23 @@ def get_tournaments(category, start_date, end_date, save_dir, request_interval=1
                 done = True
                 break
             spans = row.find_all("span")
-            results.append({
-                "id": row.find("a")["href"].removeprefix("/tournament/"),
-                "date": date_iso,
-                "n_players": int(''.join(c for c in spans[-1].text if c.isdigit())),
-                "name": spans[0].text,
-                "details": spans[1].text
-            })
-        print(f"{category}: loaded page {page} - {len(results)} tournaments, last at {results[-1]['date'] if results else None}")
+            cols = [
+                row.find("a")["href"].removeprefix("/tournament/"),    # id
+                date_iso,         # date
+                ''.join(c for c in spans[-1].text if c.isdigit()),     # n_players
+                spans[0].text,    # name
+                spans[1].text     # details
+            ]
+            print("\t".join(cols), file=fout)
+            n_loaded += 1
+            last_date_iso = date_iso
+        print(f"{category}: loaded page {page} - {n_loaded} tournaments, last at {last_date_iso}")
     session.close()
-    pd.DataFrame(results).to_csv(f"{save_dir}/{category}.tsv", sep="\t", index=False)
+    fout.close()
 
 
 start_date = datetime.datetime(2023, 1, 1, tzinfo=datetime.timezone.utc)
 end_date = datetime.datetime(2024, 12, 16, tzinfo=datetime.timezone.utc)
-save_dir = "data/tournament-lists"
-
+save_dir = "data/tournament_lists"
 for category in CATEGORIES:
     get_tournaments(category, start_date, end_date, save_dir)
