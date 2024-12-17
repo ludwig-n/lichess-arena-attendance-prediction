@@ -4,7 +4,7 @@ import time
 import bs4
 import requests
 
-import utils
+import data_collection.utils
 
 
 BASE_URL = "https://lichess.org/tournament/history"
@@ -36,7 +36,7 @@ def get_tournaments(category, start_date, end_date, save_dir, overwrite=True, re
     while not done:
         page += 1
         time.sleep(request_interval)
-        response = utils.try_get(session, f"{BASE_URL}/{category}", params={"page": page}).text
+        response = data_collection.utils.try_get(session, f"{BASE_URL}/{category}", params={"page": page}).text
         rows = bs4.BeautifulSoup(response, "lxml").find_all("tr", {"class": "paginated"})
         if not rows:    # out of tournaments
             break
