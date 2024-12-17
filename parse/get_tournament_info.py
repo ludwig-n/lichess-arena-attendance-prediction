@@ -27,7 +27,7 @@ def get_info(in_path, out_path, use_cache, overwrite=True):
             else:
                 dct = utils.try_get(session, f"{BASE_URL}/{row.id}").json()
                 dct.pop("standing", None)
-                if use_cache:
+                if use_cache and "Thematic" not in row.details:
                     cache[row.name, row.details] = dct
             print(json.dumps(dct, separators=(",", ":")), file=fout)    # dump compact JSON
 
