@@ -26,6 +26,7 @@ def json_list_to_dataframe(jsons):
             "rated": dct["rated"],
             "berserkable": dct.get("berserkable", False),
             "only_titled": dct.get("onlyTitled", False),
+            "is_team": "teamBattle" in dct,
 
             "max_rating": dct.get("maxRating", {}).get("rating"),
             "min_rating": dct.get("minRating", {}).get("rating"),
