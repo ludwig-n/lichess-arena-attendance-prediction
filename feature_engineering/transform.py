@@ -1,9 +1,13 @@
 import json
 
+import numpy as np
 import pandas as pd
+import sklearn.compose
+import sklearn.pipeline
+import sklearn.preprocessing
 
 
-def json_list_to_dataframe(jsons):
+def json_list_to_dataframe(jsons: list[str]) -> pd.DataFrame:
     rows = []
     for json_ in jsons:
         dct = json.loads(json_)
@@ -40,3 +44,79 @@ def json_list_to_dataframe(jsons):
             "description": dct["description"].replace("\n", " ").replace("\r", "") if "description" in dct else None
         })
     return pd.DataFrame(rows)
+
+
+def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    start_time = pd.to_datetime(df.starts_at, format="ISO8601").dt.round("30min")
+    df["starts_at_month"] = start_time.dt.month
+    df["starts_at_weekday"] = start_time.dt.weekday
+    df["starts_at_hour"] = start_time.dt.hour
+
+    duration = pd.to_timedelta(df.duration_mins, "minutes")
+    end_time = (start_time + duration).dt.round("30min")
+    same_day = start_time.dt.day == end_time.dt.day
+
+    start_half_hour = start_time.dt.hour * 2 + start_time.dt.minute // 30
+    end_half_hour = end_time.dt.hour * 2 + end_time.dt.minute // 30
+
+    for hour in range(24):
+        for minute in [0, 30]:
+            col_name = f"open_at_{str(hour).zfill(2)}h{str(minute).zfill(2)}m"
+            half_hour = hour * 2 + minute // 30
+            after_start = start_half_hour <= half_hour
+            before_end = half_hour <= end_half_hour
+            df[col_name] = (same_day & after_start & before_end) | (~same_day & (after_start | before_end))
+
+    df["has_clock_increment"] = df.clock_increment_secs > 0
+    df["has_max_rating"] = df.max_rating.notna()
+    df["has_min_rating"] = df.min_rating.notna()
+    df["has_min_rated_games"] = df.min_rated_games.notna()
+    df["has_custom_position"] = df.position_fen.notna()
+    df["has_headline"] = df.headline.notna()
+    df["has_description"] = df.description.notna()
+    df["has_prizes"] = df.description.str.contains("Prizes:", na=False)
+
+    return df
+
+
+def custom_scale_and_fill(df: pd.DataFrame) -> pd.DataFrame:
+    min_rating_norm = (df.min_rating - 1500) / 300
+    max_rating_norm = (df.max_rating - 1500) / 300
+    return (df
+        .assign(
+            min_rating=1 / (1 + np.exp(-min_rating_norm)),
+            max_rating=1 / (1 + np.exp(-max_rating_norm))
+        )
+        .fillna({
+            "min_rating": 0,
+            "max_rating": 1,
+            "min_rated_games": 0
+        })
+    )
+
+
+def get_pipeline() -> sklearn.pipeline.Pipeline:
+    return sklearn.pipeline.make_pipeline(
+        sklearn.preprocessing.FunctionTransformer(add_derived_features),
+        sklearn.preprocessing.FunctionTransformer(custom_scale_and_fill),
+        sklearn.compose.make_column_transformer(
+            (
+                sklearn.preprocessing.OneHotEncoder(sparse_output=False),
+                ["variant", "perf", "freq", "speed", "starts_at_month", "starts_at_weekday", "starts_at_hour"]
+            ),
+            (
+                sklearn.preprocessing.MaxAbsScaler(),
+                ["duration_mins", "clock_limit_secs", "clock_increment_secs", "min_rated_games"]
+            ),
+            (
+                "passthrough",
+                sklearn.compose.make_column_selector(dtype_include=bool)
+            ),
+            (
+                "passthrough",
+                ["min_rating", "max_rating"]    # already scaled to [0, 1] in custom_scale_and_fill
+            ),
+            verbose_feature_names_out=False
+        )
+    )
