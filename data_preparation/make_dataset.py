@@ -2,7 +2,7 @@ import pathlib
 
 import sklearn.model_selection
 
-import feature_engineering.transform
+import preprocessing
 
 
 in_dir = "data/tournament_info"
@@ -12,7 +12,7 @@ lines = []
 for file in sorted(pathlib.Path(in_dir).glob("*.ndjson")):
     lines += file.read_text().splitlines()
 
-df = feature_engineering.transform.json_list_to_dataframe(lines)
+df = preprocessing.json_list_to_dataframe(lines)
 df_train, df_test = sklearn.model_selection.train_test_split(df, test_size=0.1, random_state=27, stratify=df.freq)
 
 # We don't have any true float features, so we dump all "floats" as ints
