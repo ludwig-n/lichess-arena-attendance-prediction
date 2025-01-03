@@ -22,5 +22,5 @@ for name, regressor in regressors:
 
     path = f"{model_dir}/{name}.p"
     with open(path, "wb") as fout:
-        pickle.dump(pipeline[-1].regressor_, fout, protocol=5)
+        pickle.dump(pipeline, fout, protocol=5)
     print(f"saved to {path}\n")
