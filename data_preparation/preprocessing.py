@@ -2,6 +2,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import sklearn.base
 import sklearn.compose
 import sklearn.pipeline
 import sklearn.preprocessing
@@ -80,6 +81,12 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def read_tsv_with_all_features(path: str) -> tuple[pd.DataFrame, pd.Series]:
+    df = pd.read_csv(path, sep="\t")
+    X, y = df.drop(columns="n_players"), df.n_players
+    return add_derived_features(X), y
+
+
 def custom_scale_and_fill(df: pd.DataFrame) -> pd.DataFrame:
     min_rating_norm = (df.min_rating - 1500) / 300
     max_rating_norm = (df.max_rating - 1500) / 300
@@ -96,17 +103,22 @@ def custom_scale_and_fill(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def get_pipeline() -> sklearn.pipeline.Pipeline:
-    return sklearn.pipeline.make_pipeline(
-        sklearn.preprocessing.FunctionTransformer(add_derived_features),
-        sklearn.preprocessing.FunctionTransformer(custom_scale_and_fill),
+def make_pipeline(
+    regressor: sklearn.base.RegressorMixin | None,
+    ohe: bool = True,
+    scale: bool = True
+) -> sklearn.pipeline.Pipeline:
+    steps = []
+    if scale:
+        steps.append(sklearn.preprocessing.FunctionTransformer(custom_scale_and_fill, feature_names_out="one-to-one"))
+    steps.append(
         sklearn.compose.make_column_transformer(
             (
-                sklearn.preprocessing.OneHotEncoder(sparse_output=False),
+                sklearn.preprocessing.OneHotEncoder(sparse_output=False) if ohe else "passthrough",
                 ["variant", "perf", "freq", "speed", "starts_at_month", "starts_at_weekday", "starts_at_hour"]
             ),
             (
-                sklearn.preprocessing.MaxAbsScaler(),
+                sklearn.preprocessing.MaxAbsScaler() if scale else "passthrough",
                 ["duration_mins", "clock_limit_secs", "clock_increment_secs", "min_rated_games"]
             ),
             (
@@ -115,8 +127,13 @@ def get_pipeline() -> sklearn.pipeline.Pipeline:
             ),
             (
                 "passthrough",
-                ["min_rating", "max_rating"]    # already scaled to [0, 1] in custom_scale_and_fill
+                ["min_rating", "max_rating"]    # already scaled to [0, 1] in custom_scale_and_fill if scale=True
             ),
             verbose_feature_names_out=False
         )
     )
+    if regressor is not None:
+        steps.append(sklearn.compose.TransformedTargetRegressor(regressor=regressor, func=np.log, inverse_func=np.exp))
+    pipeline = sklearn.pipeline.make_pipeline(*steps)
+    pipeline.set_output(transform="pandas")
+    return pipeline
