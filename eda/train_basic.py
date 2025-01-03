@@ -1,11 +1,9 @@
 import pickle
-import sys
-sys.path.append(".")
 
 import sklearn.ensemble
 import sklearn.linear_model
 
-import data_preparation.preprocessing as preprocessing
+import preprocessing
 
 
 X_train, y_train = preprocessing.read_tsv_with_all_features("data/tournament_dataset/train.tsv")
