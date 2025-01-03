@@ -81,15 +81,18 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def read_tsv_with_all_features(path: str) -> tuple[pd.DataFrame, pd.Series]:
+def read_tsv_with_all_features(path: str) -> tuple[pd.DataFrame, pd.Series | None]:
     df = pd.read_csv(path, sep="\t")
-    X, y = df.drop(columns="n_players"), df.n_players
+    if "n_players" in df.columns:
+        X, y = df.drop(columns="n_players"), df.n_players
+    else:
+        X, y = df, None
     return add_derived_features(X), y
 
 
 def custom_scale_and_fill(df: pd.DataFrame) -> pd.DataFrame:
-    min_rating_norm = (df.min_rating - 1500) / 300
-    max_rating_norm = (df.max_rating - 1500) / 300
+    min_rating_norm = (df.min_rating.astype(float) - 1500) / 300
+    max_rating_norm = (df.max_rating.astype(float) - 1500) / 300
     return (df
         .assign(
             min_rating=1 / (1 + np.exp(-min_rating_norm)),
