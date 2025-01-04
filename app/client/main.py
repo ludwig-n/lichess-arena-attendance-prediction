@@ -68,6 +68,8 @@ if source == RADIO_LICHESS_LINK_TEXT:
     st.write("")
 
     if predict_pressed:
+        st.session_state.pop("predict_link_response", None)
+        st.session_state.pop("altair_chart", None)
         st.session_state.predict_link_response = try_request(
             "POST", f"{SERVER_URL}/predict_link/{model_name}", params={"tournament_link_or_id": link_or_id}
         ).json()
@@ -84,23 +86,21 @@ if source == RADIO_LICHESS_LINK_TEXT:
             col2.metric("Actual attendance", f"{response["n_players_true"]} players")
 
         _, center, _ = st.columns(3)
-        if center.button("Explain this prediction", use_container_width=True):
-            st.write("")
-
+        if "altair_chart" in st.session_state:
+            st.write("Most important features for this prediction according to LIME:")
+            st.altair_chart(st.session_state.altair_chart, use_container_width=True)
+        elif center.button("Explain this prediction", use_container_width=True):
             data = try_request(
                 "POST", f"{SERVER_URL}/explain/{model_name}", params={"tournament_link_or_id": link_or_id}
             ).json()
             df = pd.DataFrame(data)
 
-            altair_chart = alt.Chart(df).mark_bar().encode(
+            st.session_state.altair_chart = alt.Chart(df).encode(
                 y=alt.X("feature", sort=None),
                 x=alt.Y("weight"),
                 color=alt.condition(alt.datum.weight > 0, alt.ColorValue("green"), alt.ColorValue("red"))
-            ).configure_axis(
-                labelLimit=300
-            )
-
-            st.altair_chart(altair_chart, use_container_width=True)
+            ).mark_bar().configure_axis(labelLimit=300)
+            st.rerun()
 
 else:
     tsv_file = st.file_uploader("Upload dataset file", type="tsv")
@@ -110,6 +110,8 @@ else:
     )
 
     if predict_pressed:
+        st.session_state.pop("predict_tsv_response", None)
+        st.session_state.pop("tsv_file_name", None)
         st.session_state.predict_tsv_response = try_request(
             "POST", f"{SERVER_URL}/predict_tsv/{model_name}", files={"tsv_file": tsv_file}
         ).json()
