@@ -1,3 +1,4 @@
+import json
 import pathlib
 
 import sklearn.model_selection
@@ -8,11 +9,11 @@ import preprocessing
 in_dir = "data/tournament_info"
 out_dir = "data/tournament_dataset"
 
-lines = []
+tournaments = []
 for file in sorted(pathlib.Path(in_dir).glob("*.ndjson")):
-    lines += file.read_text().splitlines()
+    tournaments += [json.loads(line) for line in file.read_text().splitlines()]
 
-df = preprocessing.json_list_to_dataframe(lines)
+df = preprocessing.api_objects_to_dataframe(tournaments)
 df_train, df_test = sklearn.model_selection.train_test_split(df, test_size=0.1, random_state=27, stratify=df.freq)
 
 # We don't have any true float features, so we dump all "floats" as ints
