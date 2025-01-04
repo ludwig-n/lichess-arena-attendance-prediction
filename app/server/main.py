@@ -3,6 +3,7 @@ import pickle
 import re
 
 import fastapi
+import pandera as pa
 import pydantic
 import requests
 import sklearn.metrics
@@ -56,7 +57,11 @@ def list_models() -> list[str]:
 
 @app.post("/predict_tsv/{model_name}")
 def predict_tsv(model_name: str, tsv_file: fastapi.UploadFile) -> PredictTsvResponse:
-    X_test, y_true = preprocessing.read_tsv_with_all_features(tsv_file.file)
+    try:
+        X_test, y_true = preprocessing.read_tsv_with_all_features(tsv_file.file)
+    except pa.errors.SchemaError as e:
+        raise fastapi.HTTPException(fastapi.status.HTTP_422_UNPROCESSABLE_ENTITY, f"Invalid dataset format: {e}")
+
     y_pred = get_model(model_name).predict(X_test)
 
     if y_true is not None:

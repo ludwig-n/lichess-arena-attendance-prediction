@@ -1,14 +1,56 @@
 import json
+import os
+import typing as tp
 
 import numpy as np
 import pandas as pd
+import pandera as pa
+import pandera.typing as pat
 import sklearn.base
 import sklearn.compose
 import sklearn.pipeline
 import sklearn.preprocessing
 
 
-def json_list_to_dataframe(jsons: list[str]) -> pd.DataFrame:
+class RawDatasetSchema(pa.DataFrameModel):
+    id: str
+    n_players: tp.Optional[int]
+    name: str
+
+    starts_at: str
+    duration_mins: int
+
+    variant: str
+    perf: str
+    freq: str
+
+    speed: str
+    clock_limit_secs: int
+    clock_increment_secs: int
+
+    rated: bool
+    berserkable: bool
+    only_titled: bool
+    is_team: bool
+
+    # Semantically these are ints but regular ints aren't nullable in Pandas so we consider them floats
+    max_rating: float = pa.Field(nullable=True, coerce=True)
+    min_rating: float = pa.Field(nullable=True, coerce=True)
+    min_rated_games: float = pa.Field(nullable=True, coerce=True)
+
+    position_fen: str = pa.Field(nullable=True, coerce=True)
+    position_opening_name: str = pa.Field(nullable=True, coerce=True)
+    position_opening_eco: str = pa.Field(nullable=True, coerce=True)
+
+    headline: str = pa.Field(nullable=True, coerce=True)
+    description: str = pa.Field(nullable=True, coerce=True)
+
+    class Config:
+        strict = True
+
+
+@pa.check_types
+def json_list_to_dataframe(jsons: list[str]) -> pat.DataFrame[RawDatasetSchema]:
     rows = []
     for json_ in jsons:
         dct = json.loads(json_)
@@ -47,7 +89,8 @@ def json_list_to_dataframe(jsons: list[str]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
+@pa.check_types
+def add_derived_features(df: pat.DataFrame[RawDatasetSchema]) -> pd.DataFrame:
     df = df.copy()
     start_time = pd.to_datetime(df.starts_at, format="ISO8601").dt.round("30min")
     df["starts_at_month"] = start_time.dt.month
@@ -81,8 +124,8 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def read_tsv_with_all_features(path: str) -> tuple[pd.DataFrame, pd.Series | None]:
-    df = pd.read_csv(path, sep="\t")
+def read_tsv_with_all_features(path: str | os.PathLike | tp.IO) -> tuple[pd.DataFrame, pd.Series | None]:
+    df = RawDatasetSchema.validate(pd.read_csv(path, sep="\t"))
     if "n_players" in df.columns:
         X, y = df.drop(columns="n_players"), df.n_players
     else:
@@ -91,8 +134,8 @@ def read_tsv_with_all_features(path: str) -> tuple[pd.DataFrame, pd.Series | Non
 
 
 def custom_scale_and_fill(df: pd.DataFrame) -> pd.DataFrame:
-    min_rating_norm = (df.min_rating.astype(float) - 1500) / 300
-    max_rating_norm = (df.max_rating.astype(float) - 1500) / 300
+    min_rating_norm = (df.min_rating - 1500) / 300
+    max_rating_norm = (df.max_rating - 1500) / 300
     return (df
         .assign(
             min_rating=1 / (1 + np.exp(-min_rating_norm)),
