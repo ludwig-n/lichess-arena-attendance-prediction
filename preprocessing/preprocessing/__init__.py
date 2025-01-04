@@ -1,7 +1,7 @@
-import json
 import os
 import typing as tp
 
+import lime.lime_tabular
 import numpy as np
 import pandas as pd
 import pandera as pa
@@ -49,42 +49,47 @@ class RawDatasetSchema(pa.DataFrameModel):
         strict = True
 
 
+# All other features used for training are either categorical or binary (including all derived features).
+NUMERIC_FEATURES = [
+    "duration_mins", "clock_limit_secs", "clock_increment_secs", "min_rated_games", "min_rating", "max_rating"
+]
+
+
 @pa.check_types
-def json_list_to_dataframe(jsons: list[str]) -> pat.DataFrame[RawDatasetSchema]:
+def api_objects_to_dataframe(objects: list[dict[str, tp.Any]]) -> pat.DataFrame[RawDatasetSchema]:
     rows = []
-    for json_ in jsons:
-        dct = json.loads(json_)
+    for obj in objects:
         rows.append({
-            "id": dct["id"],
-            "n_players": dct["nbPlayers"],
-            "name": dct["fullName"],
+            "id": obj["id"],
+            "n_players": obj["nbPlayers"],
+            "name": obj["fullName"],
 
-            "starts_at": dct["startsAt"],
-            "duration_mins": dct["minutes"],
+            "starts_at": obj["startsAt"],
+            "duration_mins": obj["minutes"],
 
-            "variant": dct["variant"],
-            "perf": dct["perf"]["key"],
-            "freq": dct["schedule"]["freq"],
+            "variant": obj["variant"],
+            "perf": obj["perf"]["key"],
+            "freq": obj["schedule"]["freq"],
 
-            "speed": dct["schedule"]["speed"],
-            "clock_limit_secs": dct["clock"]["limit"],
-            "clock_increment_secs": dct["clock"]["increment"],
+            "speed": obj["schedule"]["speed"],
+            "clock_limit_secs": obj["clock"]["limit"],
+            "clock_increment_secs": obj["clock"]["increment"],
 
-            "rated": dct["rated"],
-            "berserkable": dct.get("berserkable", False),
-            "only_titled": dct.get("onlyTitled", False),
-            "is_team": "teamBattle" in dct,
+            "rated": obj["rated"],
+            "berserkable": obj.get("berserkable", False),
+            "only_titled": obj.get("onlyTitled", False),
+            "is_team": "teamBattle" in obj,
 
-            "max_rating": dct.get("maxRating", {}).get("rating"),
-            "min_rating": dct.get("minRating", {}).get("rating"),
-            "min_rated_games": dct.get("minRatedGames", {}).get("nb"),
+            "max_rating": obj.get("maxRating", {}).get("rating"),
+            "min_rating": obj.get("minRating", {}).get("rating"),
+            "min_rated_games": obj.get("minRatedGames", {}).get("nb"),
 
-            "position_fen": dct.get("position", {}).get("fen"),
-            "position_opening_name": dct.get("position", {}).get("name"),
-            "position_opening_eco": dct.get("position", {}).get("eco"),
+            "position_fen": obj.get("position", {}).get("fen"),
+            "position_opening_name": obj.get("position", {}).get("name"),
+            "position_opening_eco": obj.get("position", {}).get("eco"),
 
-            "headline": dct.get("spotlight", {}).get("headline"),
-            "description": dct["description"].replace("\n", " ").replace("\r", "") if "description" in dct else None
+            "headline": obj.get("spotlight", {}).get("headline"),
+            "description": obj["description"].replace("\n", " ").replace("\r", "") if "description" in obj else None
         })
     return pd.DataFrame(rows)
 
@@ -133,53 +138,128 @@ def read_tsv_with_all_features(path: str | os.PathLike | tp.IO) -> tuple[pd.Data
     return add_derived_features(X), y
 
 
-def custom_scale_and_fill(df: pd.DataFrame) -> pd.DataFrame:
-    min_rating_norm = (df.min_rating - 1500) / 300
-    max_rating_norm = (df.max_rating - 1500) / 300
-    return (df
-        .assign(
-            min_rating=1 / (1 + np.exp(-min_rating_norm)),
-            max_rating=1 / (1 + np.exp(-max_rating_norm))
-        )
-        .fillna({
-            "min_rating": 0,
-            "max_rating": 1,
-            "min_rated_games": 0
-        })
-    )
+def ratings_to_percentiles(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sigmoid heuristic to transform Lichess ratings to percentiles.
+    If ratings are already passed as percentiles, leaves them unchanged.
+    Fills NAs in min_rating and max_rating as appropriate.
+    """
+    if df.min_rating.max() > 1:
+        min_rating_norm = (df.min_rating - 1500) / 300
+        df = df.assign(min_rating=1 / (1 + np.exp(-min_rating_norm)))
+    if df.max_rating.max() > 1:
+        max_rating_norm = (df.max_rating - 1500) / 300
+        df = df.assign(max_rating=1 / (1 + np.exp(-max_rating_norm)))
+    return df.fillna({"min_rating": 0, "max_rating": 1})
+
+
+def fill_na(df: pd.DataFrame) -> pd.DataFrame:
+    return df.fillna({"min_rated_games": 0})
 
 
 def make_pipeline(
     regressor: sklearn.base.RegressorMixin | None,
     ohe: bool = True,
-    scale: bool = True
+    scale_numeric: bool = True
 ) -> sklearn.pipeline.Pipeline:
-    steps = []
-    if scale:
-        steps.append(sklearn.preprocessing.FunctionTransformer(custom_scale_and_fill, feature_names_out="one-to-one"))
-    steps.append(
+    one_hot_encoder = sklearn.preprocessing.OneHotEncoder(sparse_output=False)
+    max_abs_scaler = sklearn.preprocessing.MaxAbsScaler()
+    rating_scaler = sklearn.preprocessing.FunctionTransformer(ratings_to_percentiles, feature_names_out="one-to-one")
+    na_filler = sklearn.preprocessing.FunctionTransformer(fill_na, feature_names_out="one-to-one")
+
+    steps = [
         sklearn.compose.make_column_transformer(
             (
-                sklearn.preprocessing.OneHotEncoder(sparse_output=False) if ohe else "passthrough",
+                one_hot_encoder if ohe else "passthrough",
                 ["variant", "perf", "freq", "speed", "starts_at_month", "starts_at_weekday", "starts_at_hour"]
             ),
             (
-                sklearn.preprocessing.MaxAbsScaler() if scale else "passthrough",
+                max_abs_scaler if scale_numeric else "passthrough",
                 ["duration_mins", "clock_limit_secs", "clock_increment_secs", "min_rated_games"]
+            ),
+            (
+                rating_scaler,
+                ["min_rating", "max_rating"]
             ),
             (
                 "passthrough",
                 sklearn.compose.make_column_selector(dtype_include=bool)
             ),
-            (
-                "passthrough",
-                ["min_rating", "max_rating"]    # already scaled to [0, 1] in custom_scale_and_fill if scale=True
-            ),
             verbose_feature_names_out=False
-        )
-    )
+        ),
+        na_filler
+    ]
     if regressor is not None:
         steps.append(sklearn.compose.TransformedTargetRegressor(regressor=regressor, func=np.log, inverse_func=np.exp))
+
     pipeline = sklearn.pipeline.make_pipeline(*steps)
     pipeline.set_output(transform="pandas")
     return pipeline
+
+
+class PartialOrdinalEncoder(sklearn.base.OneToOneFeatureMixin, sklearn.base.TransformerMixin, sklearn.base.BaseEstimator):
+    """
+    Applies OrdinalEncoder to only *some* columns in a dataset. This is used in LimeWrapper.
+    For some reason sklearn does not natively support this if you need the inverse transformation too.
+    """
+    def __init__(self, columns: list[str]):
+        self.all_columns = []
+        self.encoders = {col: sklearn.preprocessing.OrdinalEncoder() for col in columns}
+        self.set_output(transform="pandas")
+
+    def fit(self, X: pd.DataFrame, y=None) -> tp.Self:
+        self.all_columns = X.columns
+        for col, encoder in self.encoders.items():
+            encoder.fit(X[[col]])
+        return self
+
+    def transform(self, X: pd.DataFrame, y=None) -> pd.DataFrame:
+        X_encoded = X.copy()
+        for col, encoder in self.encoders.items():
+            X_encoded[col] = encoder.transform(X_encoded[[col]]).flatten()
+        return X_encoded
+
+    def inverse_transform(self, X: np.ndarray | pd.DataFrame, y=None) -> pd.DataFrame:
+        X_decoded = pd.DataFrame(X, columns=self.all_columns, copy=True)
+        for col, encoder in self.encoders.items():
+            X_decoded[col] = encoder.inverse_transform(X_decoded[[col]]).flatten()
+        return X_decoded
+
+
+class LimeWrapper:
+    def __init__(self, X_train: pd.DataFrame):
+        # Just scale ratings, fill NA and drop unused columns.
+        # All of these transformations are idempotent (see ratings_to_percentiles)
+        # so it's ok to later do them again when predicting with the standard pipeline in predict_fn.
+        self.input_fixer = make_pipeline(regressor=None, ohe=False, scale_numeric=False)
+        X_train_fixed = self.input_fixer.fit_transform(X_train)
+
+        # Encode categorical features as integers. This transformation is reversed in predict_fn.
+        categorical_features = [col for col in X_train_fixed.columns if col not in NUMERIC_FEATURES]
+        self.encoder = PartialOrdinalEncoder(categorical_features)
+        X_train_encoded = self.encoder.fit_transform(X_train_fixed)
+
+        self.explainer = lime.lime_tabular.LimeTabularExplainer(
+            training_data=X_train_encoded.to_numpy(),
+            mode="regression",
+            feature_names=X_train_encoded.columns,
+            categorical_features=[
+                X_train_encoded.columns.get_loc(feat)
+                for feat in categorical_features
+            ],
+            categorical_names={
+                X_train_encoded.columns.get_loc(feat): self.encoder.encoders[feat].categories_[0]
+                for feat in categorical_features
+            },
+            discretize_continuous=False,
+            random_state=27
+        )
+
+    def explain_instance(
+        self, pipeline: sklearn.pipeline.Pipeline, one_row_df: pd.DataFrame, **kwargs
+    ) -> lime.lime_tabular.explanation.Explanation:
+        return self.explainer.explain_instance(
+            data_row=self.encoder.transform(self.input_fixer.transform(one_row_df)).to_numpy().flatten(),
+            predict_fn=lambda X: pipeline.predict(self.encoder.inverse_transform(X)),
+            **kwargs
+        )

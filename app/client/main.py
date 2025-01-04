@@ -1,6 +1,8 @@
 import datetime
 import os
 
+import altair as alt
+import pandas as pd
 import requests
 import streamlit as st
 
@@ -57,21 +59,17 @@ source = st.radio(
 
 if source == RADIO_LICHESS_LINK_TEXT:
     link_or_id = st.text_input("Lichess tournament link or ID")
+
     st.write("")
     _, center, _ = st.columns(3)
     predict_pressed = center.button(
-        "Predict",
-        type="primary",
-        disabled=not (model_name and link_or_id),
-        use_container_width=True
+        "Predict", type="primary", disabled=not (model_name and link_or_id), use_container_width=True
     )
     st.write("")
 
     if predict_pressed:
         st.session_state.predict_link_response = try_request(
-            "POST",
-            f"{SERVER_URL}/predict_link/{model_name}",
-            params={"tournament_link_or_id": link_or_id}
+            "POST", f"{SERVER_URL}/predict_link/{model_name}", params={"tournament_link_or_id": link_or_id}
         ).json()
 
     if st.session_state.get("predict_link_response"):
@@ -87,23 +85,33 @@ if source == RADIO_LICHESS_LINK_TEXT:
 
         _, center, _ = st.columns(3)
         if center.button("Explain this prediction", use_container_width=True):
-            st.write("Coming soon!")
+            st.write("")
+
+            data = try_request(
+                "POST", f"{SERVER_URL}/explain/{model_name}", params={"tournament_link_or_id": link_or_id}
+            ).json()
+            df = pd.DataFrame(data)
+
+            altair_chart = alt.Chart(df).mark_bar().encode(
+                y=alt.X("feature", sort=None),
+                x=alt.Y("weight"),
+                color=alt.condition(alt.datum.weight > 0, alt.ColorValue("green"), alt.ColorValue("red"))
+            ).configure_axis(
+                labelLimit=300
+            )
+
+            st.altair_chart(altair_chart, use_container_width=True)
 
 else:
     tsv_file = st.file_uploader("Upload dataset file", type="tsv")
     _, center, _ = st.columns(3)
     predict_pressed = center.button(
-        "Predict",
-        type="primary",
-        disabled=not (model_name and tsv_file),
-        use_container_width=True
+        "Predict", type="primary", disabled=not (model_name and tsv_file), use_container_width=True
     )
 
     if predict_pressed:
         st.session_state.predict_tsv_response = try_request(
-            "POST",
-            f"{SERVER_URL}/predict_tsv/{model_name}",
-            files={"tsv_file": tsv_file}
+            "POST", f"{SERVER_URL}/predict_tsv/{model_name}", files={"tsv_file": tsv_file}
         ).json()
         st.session_state.tsv_file_name = tsv_file.name
 
@@ -124,8 +132,5 @@ else:
 
         _, center, _ = st.columns(3)
         center.download_button(
-            "Download predictions (TSV)",
-            data=tsv_data,
-            file_name="predictions.tsv",
-            use_container_width=True
+            "Download predictions (TSV)", data=tsv_data, file_name="predictions.tsv", use_container_width=True
         )

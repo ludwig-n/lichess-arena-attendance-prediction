@@ -1,6 +1,7 @@
 import pathlib
 import pickle
 import re
+import typing as tp
 
 import fastapi
 import pandera as pa
@@ -14,12 +15,15 @@ import preprocessing
 
 
 MODELS_DIR = pathlib.Path("models")
+TRAIN_PATH = pathlib.Path("data/tournament_dataset/train.tsv")  # required for LIME
 
 TOURNAMENT_LINK_OR_ID_PATTERN = re.compile(r"(?:https://lichess.org/tournament/)?(\w+)", flags=re.ASCII)
 API_BASE_URL = "https://lichess.org/api/tournament"
 REQUEST_TIMEOUT = 5
 
 app = fastapi.FastAPI()
+app.state.tournament_cache = {}
+app.state.lime = preprocessing.LimeWrapper(preprocessing.read_tsv_with_all_features(TRAIN_PATH)[0])
 
 
 class RegressionMetrics(pydantic.BaseModel):
@@ -42,12 +46,40 @@ class PredictLinkResponse(pydantic.BaseModel):
     starts_at: str
 
 
+class ExplanationItem(pydantic.BaseModel):
+    feature: str
+    weight: float
+
+
 def get_model(model_name: str) -> sklearn.pipeline.Pipeline:
     model_path = MODELS_DIR / f"{model_name}.p"
     if not model_path.exists():
         raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND, f"Model {model_name} not found")
     with open(model_path, "rb") as fin:
         return pickle.load(fin)
+
+
+def get_tournament_info(tournament_link_or_id: str) -> dict[str, tp.Any]:
+    match = TOURNAMENT_LINK_OR_ID_PATTERN.fullmatch(tournament_link_or_id)
+    if match is None:
+        raise fastapi.HTTPException(fastapi.status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid tournament link or id")
+    tournament_id = match.group(1)
+
+    if tournament_id in app.state.tournament_cache:
+        return app.state.tournament_cache[tournament_id]
+
+    try:
+        response = requests.get(f"{API_BASE_URL}/{tournament_id}", timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        if isinstance(e, requests.HTTPError) and e.response.status_code == 404:
+            raise fastapi.HTTPException(fastapi.status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid tournament link or id")
+        else:
+            raise fastapi.HTTPException(fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR, "Couldn't connect to Lichess")
+
+    obj = response.json()
+    app.state.tournament_cache[tournament_id] = obj
+    return obj
 
 
 @app.get("/list_models")
@@ -79,28 +111,26 @@ def predict_tsv(model_name: str, tsv_file: fastapi.UploadFile) -> PredictTsvResp
 
 @app.post("/predict_link/{model_name}")
 def predict_link(model_name: str, tournament_link_or_id: str) -> PredictLinkResponse:
-    match = TOURNAMENT_LINK_OR_ID_PATTERN.fullmatch(tournament_link_or_id)
-    if match is None:
-        raise fastapi.HTTPException(fastapi.status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid tournament link or id")
-
-    try:
-        response = requests.get(f"{API_BASE_URL}/{match.group(1)}", timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        if isinstance(e, requests.HTTPError) and e.response.status_code == 404:
-            raise fastapi.HTTPException(fastapi.status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid tournament link or id")
-        else:
-            raise fastapi.HTTPException(fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR, "Couldn't connect to Lichess")
-
-    df_raw = preprocessing.json_list_to_dataframe([response.text])
+    obj = get_tournament_info(tournament_link_or_id)
+    df_raw = preprocessing.api_objects_to_dataframe([obj])
     df = preprocessing.add_derived_features(df_raw.drop(columns=["n_players"], errors="ignore"))
 
     return PredictLinkResponse(
         n_players_pred=round(get_model(model_name).predict(df)[0]),
-        n_players_true=df_raw.n_players[0] if response.json().get("isFinished") else None,
+        n_players_true=df_raw.n_players[0] if obj.get("isFinished") else None,
         name=df_raw.name[0],
         starts_at=df_raw.starts_at[0]
     )
+
+
+@app.post("/explain/{model_name}")
+def explain(model_name: str, tournament_link_or_id: str) -> list[ExplanationItem]:
+    obj = get_tournament_info(tournament_link_or_id)
+    df_raw = preprocessing.api_objects_to_dataframe([obj])
+    df = preprocessing.add_derived_features(df_raw.drop(columns=["n_players"], errors="ignore"))
+
+    results = app.state.lime.explain_instance(get_model(model_name), df, num_samples=50000, num_features=20).as_list()
+    return [ExplanationItem(feature=feature, weight=weight) for feature, weight in results]
 
 
 if __name__ == "__main__":
