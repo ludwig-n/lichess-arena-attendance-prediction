@@ -10,8 +10,8 @@ X_train, y_train = preprocessing.read_tsv_with_all_features("data/tournament_dat
 X_test, y_test = preprocessing.read_tsv_with_all_features("data/tournament_dataset/test.tsv")
 
 regressors = [
-    ("ridge_basic", sklearn.linear_model.Ridge(random_state=27)),
-    ("random_forest_basic", sklearn.ensemble.RandomForestRegressor(random_state=27, verbose=2))
+    ("ridge_basic", sklearn.linear_model.Ridge(alpha=100, random_state=27)),
+    ("random_forest_basic", sklearn.ensemble.RandomForestRegressor(random_state=27))
 ]
 
 model_dir = "models"
