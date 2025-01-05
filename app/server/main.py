@@ -21,6 +21,9 @@ TOURNAMENT_LINK_OR_ID_PATTERN = re.compile(r"(?:https://lichess.org/tournament/)
 API_BASE_URL = "https://lichess.org/api/tournament"
 REQUEST_TIMEOUT = 5
 
+EXPLANATION_N_FEATURES = 20
+LIME_N_SAMPLES = 50000
+
 app = fastapi.FastAPI()
 app.state.tournament_cache = {}
 app.state.lime = preprocessing.LimeWrapper(preprocessing.read_tsv_with_all_features(TRAIN_PATH)[0])
@@ -49,6 +52,11 @@ class PredictLinkResponse(pydantic.BaseModel):
 class ExplanationItem(pydantic.BaseModel):
     feature: str
     weight: float
+
+
+class ExplainResponse(pydantic.BaseModel):
+    items: list[ExplanationItem]
+    source: str
 
 
 def get_model(model_name: str) -> sklearn.pipeline.Pipeline:
@@ -124,13 +132,28 @@ def predict_link(model_name: str, tournament_link_or_id: str) -> PredictLinkResp
 
 
 @app.post("/explain/{model_name}")
-def explain(model_name: str, tournament_link_or_id: str) -> list[ExplanationItem]:
+def explain(model_name: str, tournament_link_or_id: str) -> ExplainResponse:
     obj = get_tournament_info(tournament_link_or_id)
     df_raw = preprocessing.api_objects_to_dataframe([obj])
     df = preprocessing.add_derived_features(df_raw.drop(columns=["n_players"], errors="ignore"))
 
-    results = app.state.lime.explain_instance(get_model(model_name), df, num_samples=50000, num_features=20).as_list()
-    return [ExplanationItem(feature=feature, weight=weight) for feature, weight in results]
+    pipeline = get_model(model_name)
+    regressor = pipeline[-1].regressor_
+    if hasattr(regressor, "coef_"):
+        df_transformed = pipeline[:-1].transform(df)
+        items = [
+            ExplanationItem(feature=feature, weight=weight * df_transformed[feature].iloc[0])
+            for feature, weight in zip(regressor.feature_names_in_, regressor.coef_)
+            if df_transformed[feature].iloc[0] != 0
+        ]
+        items.sort(key=lambda item: abs(item.weight), reverse=True)
+        return ExplainResponse(items=items[:EXPLANATION_N_FEATURES], source="coefs")
+    else:
+        results = app.state.lime.explain_instance(
+            pipeline, df, num_samples=LIME_N_SAMPLES, num_features=EXPLANATION_N_FEATURES
+        ).as_list()
+        items = [ExplanationItem(feature=feature, weight=weight) for feature, weight in results]
+        return ExplainResponse(items=items, source="lime")
 
 
 if __name__ == "__main__":

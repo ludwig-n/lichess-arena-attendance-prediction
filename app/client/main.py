@@ -70,6 +70,7 @@ if source == RADIO_LICHESS_LINK_TEXT:
     if predict_pressed:
         st.session_state.pop("predict_link_response", None)
         st.session_state.pop("altair_chart", None)
+        st.session_state.pop("chart_title", None)
         st.session_state.predict_link_response = try_request(
             "POST", f"{SERVER_URL}/predict_link/{model_name}", params={"tournament_link_or_id": link_or_id}
         ).json()
@@ -87,19 +88,22 @@ if source == RADIO_LICHESS_LINK_TEXT:
 
         _, center, _ = st.columns(3)
         if "altair_chart" in st.session_state:
-            st.write("Most important features for this prediction according to LIME:")
+            st.write(st.session_state.chart_title)
             st.altair_chart(st.session_state.altair_chart, use_container_width=True)
         elif center.button("Explain this prediction", use_container_width=True):
             data = try_request(
                 "POST", f"{SERVER_URL}/explain/{model_name}", params={"tournament_link_or_id": link_or_id}
             ).json()
-            df = pd.DataFrame(data)
+            df = pd.DataFrame(data["items"])
 
             st.session_state.altair_chart = alt.Chart(df).encode(
                 y=alt.X("feature", sort=None),
                 x=alt.Y("weight"),
                 color=alt.condition(alt.datum.weight > 0, alt.ColorValue("green"), alt.ColorValue("red"))
             ).mark_bar().configure_axis(labelLimit=300)
+
+            source = "LIME" if data["source"] == "lime" else "model coefficients"
+            st.session_state.chart_title = f"Most important features for this prediction according to {source}:"
             st.rerun()
 
 else:
