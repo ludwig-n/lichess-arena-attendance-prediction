@@ -160,7 +160,10 @@ def make_pipeline(
         sklearn.compose.make_column_transformer(
             (
                 one_hot_encoder if ohe else "passthrough",
-                ["variant", "perf", "freq", "speed", "starts_at_month", "starts_at_weekday", "starts_at_hour"]
+                [
+                    "variant", "perf", "freq", "speed",
+                    "starts_at_month", "starts_at_weekday", "starts_at_hour", "ends_at_hour"
+                ]
             ),
             (
                 max_abs_scaler if scale_numeric else "passthrough",
