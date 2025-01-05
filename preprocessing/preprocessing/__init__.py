@@ -104,18 +104,7 @@ def add_derived_features(df: pat.DataFrame[RawDatasetSchema]) -> pd.DataFrame:
 
     duration = pd.to_timedelta(df.duration_mins, "minutes")
     end_time = (start_time + duration).dt.round("30min")
-    same_day = start_time.dt.day == end_time.dt.day
-
-    start_half_hour = start_time.dt.hour * 2 + start_time.dt.minute // 30
-    end_half_hour = end_time.dt.hour * 2 + end_time.dt.minute // 30
-
-    for hour in range(24):
-        for minute in [0, 30]:
-            col_name = f"open_at_{str(hour).zfill(2)}h{str(minute).zfill(2)}m"
-            half_hour = hour * 2 + minute // 30
-            after_start = start_half_hour <= half_hour
-            before_end = half_hour <= end_half_hour
-            df[col_name] = (same_day & after_start & before_end) | (~same_day & (after_start | before_end))
+    df["ends_at_hour"] = end_time.dt.hour
 
     df["has_clock_increment"] = df.clock_increment_secs > 0
     df["has_max_rating"] = df.max_rating.notna()
