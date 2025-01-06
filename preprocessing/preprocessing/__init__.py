@@ -127,10 +127,10 @@ def read_tsv_with_all_features(path: str | os.PathLike | tp.IO) -> tuple[pd.Data
     return add_derived_features(X), y
 
 
-def ratings_to_percentiles(df: pd.DataFrame) -> pd.DataFrame:
+def ratings_to_quantiles(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Sigmoid heuristic to transform Lichess ratings to percentiles.
-    If ratings are already passed as percentiles, leaves them unchanged.
+    Sigmoid heuristic to transform Lichess ratings to approximate playerbase quantiles.
+    If ratings are already passed as quantiles, leaves them unchanged.
     Fills NAs in min_rating and max_rating as appropriate.
     """
     if df.min_rating.max() > 1:
@@ -153,7 +153,7 @@ def make_pipeline(
 ) -> sklearn.pipeline.Pipeline:
     one_hot_encoder = sklearn.preprocessing.OneHotEncoder(sparse_output=False)
     max_abs_scaler = sklearn.preprocessing.MaxAbsScaler()
-    rating_scaler = sklearn.preprocessing.FunctionTransformer(ratings_to_percentiles, feature_names_out="one-to-one")
+    rating_scaler = sklearn.preprocessing.FunctionTransformer(ratings_to_quantiles, feature_names_out="one-to-one")
     na_filler = sklearn.preprocessing.FunctionTransformer(fill_na, feature_names_out="one-to-one")
 
     steps = [
@@ -221,7 +221,7 @@ class PartialOrdinalEncoder(sklearn.base.OneToOneFeatureMixin, sklearn.base.Tran
 class LimeWrapper:
     def __init__(self, X_train: pd.DataFrame):
         # Just scale ratings, fill NA and drop unused columns.
-        # All of these transformations are idempotent (see ratings_to_percentiles)
+        # All of these transformations are idempotent (see ratings_to_quantiles)
         # so it's ok to later do them again when predicting with the standard pipeline in predict_fn.
         self.input_fixer = make_pipeline(regressor=None, ohe=False, scale_numeric=False)
         X_train_fixed = self.input_fixer.fit_transform(X_train)
