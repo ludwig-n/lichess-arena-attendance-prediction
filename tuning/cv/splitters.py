@@ -1,4 +1,3 @@
-import dataclasses
 import math
 import typing as tp
 
@@ -6,12 +5,31 @@ import numpy as np
 import pandas as pd
 
 
-@dataclasses.dataclass
 class DataSplit:
-    X_train: pd.DataFrame
-    y_train: pd.Series
-    X_val: pd.DataFrame
-    y_val: pd.Series
+    def __init__(self, X: pd.DataFrame, y: pd.Series, val_idx: np.ndarray):
+        self.X = X
+        self.y = y
+        self.val_idx = val_idx
+
+    @property
+    def X_train(self):
+        return self.X[~self.val_idx]
+
+    @property
+    def y_train(self):
+        return self.y[~self.val_idx]
+
+    @property
+    def X_val(self):
+        return self.X[self.val_idx]
+
+    @property
+    def y_val(self):
+        return self.y[self.val_idx]
+
+    @property
+    def train_idx(self):
+        return ~self.val_idx
 
 
 class Splitter:
@@ -23,8 +41,9 @@ class Splitter:
 class LeaveOneOutSplitter(Splitter):
     def split(self, X: pd.DataFrame, y: pd.Series) -> tp.Generator[DataSplit, None, None]:
         assert len(X) == len(y), "X and y should be the same length"
+        arange = np.arange(len(X))
         for i in range(len(X)):
-            yield DataSplit(X_train=X.drop(i), y_train=y.drop(i), X_val=X.iloc[i:i + 1], y_val=y.iloc[i:i + 1])
+            yield DataSplit(X, y, arange == i)
 
 
 class KFoldSplitter(Splitter):
@@ -40,9 +59,7 @@ class KFoldSplitter(Splitter):
         np.random.default_rng(self.random_state).shuffle(fold_id)
 
         for val_fold_id in range(self.k):
-            train_idx = fold_id != val_fold_id
-            val_idx = fold_id == val_fold_id
-            yield DataSplit(X_train=X[train_idx], y_train=y[train_idx], X_val=X[val_idx], y_val=y[val_idx])
+            yield DataSplit(X, y, fold_id == val_fold_id)
 
 
 class RegressionStratifiedKFoldSplitter(Splitter):
@@ -55,8 +72,6 @@ class RegressionStratifiedKFoldSplitter(Splitter):
         assert len(X) == len(y), "X and y should be the same length"
 
         sorted_idx = np.argsort(y)[::-1]
-        X_sorted = X.iloc[sorted_idx]
-        y_sorted = y.iloc[sorted_idx]
 
         n_blocks = (len(X) - 1) // self.k + 1    # ceil(X / k)
         fold_id = np.arange(n_blocks * self.k) % self.k    # shape: [ceil(X / k) * k]
@@ -65,15 +80,11 @@ class RegressionStratifiedKFoldSplitter(Splitter):
         fold_id = fold_id.flatten()    # shape: [ceil(X / k) * k]
         fold_id = fold_id[:len(X)]     # shape: [len(X)]
 
+        fold_id_unsorted = np.empty_like(fold_id)
+        fold_id_unsorted[sorted_idx] = fold_id
+
         for val_fold_id in range(self.k):
-            train_idx = fold_id != val_fold_id
-            val_idx = fold_id == val_fold_id
-            yield DataSplit(
-                X_train=X_sorted[train_idx],
-                y_train=y_sorted[train_idx],
-                X_val=X_sorted[val_idx],
-                y_val=y_sorted[val_idx]
-            )
+            yield DataSplit(X, y, fold_id_unsorted == val_fold_id)
 
 
 class MonteCarloSplitter(Splitter):
@@ -91,5 +102,4 @@ class MonteCarloSplitter(Splitter):
         val_idx[:math.ceil(len(X) * self.val_size)] = True
 
         for _ in range(self.n_splits):
-            val_idx = rng.permuted(val_idx)
-            yield DataSplit(X_train=X[~val_idx], y_train=y[~val_idx], X_val=X[val_idx], y_val=y[val_idx])
+            yield DataSplit(X, y, rng.permuted(val_idx))
