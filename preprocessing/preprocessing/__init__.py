@@ -111,7 +111,6 @@ def add_derived_features(df: pat.DataFrame[RawDatasetSchema]) -> pd.DataFrame:
     df["has_min_rating"] = df.min_rating.notna()
     df["has_min_rated_games"] = df.min_rated_games.notna()
     df["has_custom_position"] = df.position_fen.notna()
-    df["has_headline"] = df.headline.notna()
     df["has_description"] = df.description.notna()
     df["has_prizes"] = df.description.str.contains("Prizes:", na=False)
 
