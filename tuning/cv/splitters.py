@@ -1,4 +1,5 @@
 import dataclasses
+import math
 import typing as tp
 
 import numpy as np
@@ -74,3 +75,21 @@ class RegressionStratifiedKFoldSplitter(Splitter):
                 y_val=y_sorted[val_idx]
             )
 
+
+class MonteCarloSplitter(Splitter):
+    def __init__(self, n_splits: int, val_size: float, random_state: int | None = None):
+        super().__init__()
+        self.n_splits = n_splits
+        self.val_size = val_size
+        self.random_state = random_state
+
+    def split(self, X: pd.DataFrame, y: pd.Series) -> tp.Generator[DataSplit, None, None]:
+        assert len(X) == len(y), "X and y should be the same length"
+
+        rng = np.random.default_rng(self.random_state)
+        val_idx = np.zeros(len(X), dtype=bool)
+        val_idx[:math.ceil(len(X) * self.val_size)] = True
+
+        for _ in range(self.n_splits):
+            val_idx = rng.permuted(val_idx)
+            yield DataSplit(X_train=X[~val_idx], y_train=y[~val_idx], X_val=X[val_idx], y_val=y[val_idx])
