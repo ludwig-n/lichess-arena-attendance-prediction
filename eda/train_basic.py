@@ -10,17 +10,32 @@ X_train, y_train = preprocessing.read_tsv_with_all_features("data/tournament_dat
 X_test, y_test = preprocessing.read_tsv_with_all_features("data/tournament_dataset/test.tsv")
 
 regressors = [
-    ("ridge_basic", sklearn.linear_model.Ridge(alpha=100, random_state=27)),
-    ("random_forest_basic", sklearn.ensemble.RandomForestRegressor(random_state=27))
+    (
+        "ridge_basic",
+        preprocessing.make_pipeline(sklearn.linear_model.Ridge(alpha=100, random_state=27))
+    ),
+    (
+        "random_forest_basic",
+        preprocessing.make_pipeline(sklearn.ensemble.RandomForestRegressor(random_state=27))
+    ),
+    (
+        "hist_gradient_boosting_basic",
+        preprocessing.make_pipeline(
+            sklearn.ensemble.HistGradientBoostingRegressor(
+                categorical_features=preprocessing.CATEGORICAL_FEATURES, random_state=27
+            ),
+            ohe=False
+        )
+    )
 ]
 
 model_dir = "models"
 for name, regressor in regressors:
     print(f"fitting {name}")
-    pipeline = preprocessing.make_pipeline(regressor).fit(X_train, y_train)
-    print(f"{name} score = {pipeline.score(X_test, y_test)}")
+    regressor.fit(X_train, y_train)
+    print(f"{name} score = {regressor.score(X_test, y_test)}")
 
     path = f"{model_dir}/{name}.p"
     with open(path, "wb") as fout:
-        pickle.dump(pipeline, fout, protocol=5)
+        pickle.dump(regressor, fout, protocol=5)
     print(f"saved to {path}\n")

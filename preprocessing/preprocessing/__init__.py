@@ -49,8 +49,17 @@ class RawDatasetSchema(pa.DataFrameModel):
         strict = True
 
 
-# All other features used for training are either categorical or binary (including all derived features).
+# All features used for training (including derived features).
+CATEGORICAL_FEATURES = [
+    "variant", "perf", "freq", "speed", "starts_at_month", "starts_at_weekday", "starts_at_hour", "ends_at_hour"
+]
+BINARY_FEATURES = [
+    "rated", "berserkable", "only_titled", "is_team",
+    "has_clock_increment", "has_max_rating", "has_min_rating", "has_min_rated_games",
+    "has_custom_position", "has_description", "has_prizes"
+]
 NUMERIC_FEATURES = [
+    # min_rating is not useful with the current dataset
     "duration_mins", "clock_limit_secs", "clock_increment_secs", "min_rated_games", "max_rating"
 ]
 
@@ -159,22 +168,19 @@ def make_pipeline(
         sklearn.compose.make_column_transformer(
             (
                 one_hot_encoder if ohe else "passthrough",
-                [
-                    "variant", "perf", "freq", "speed",
-                    "starts_at_month", "starts_at_weekday", "starts_at_hour", "ends_at_hour"
-                ]
+                CATEGORICAL_FEATURES
             ),
             (
                 max_abs_scaler if scale_numeric else "passthrough",
-                ["duration_mins", "clock_limit_secs", "clock_increment_secs", "min_rated_games"]
+                [col for col in NUMERIC_FEATURES if col != "max_rating"]
             ),
             (
                 rating_scaler,
-                ["max_rating"]    # min_rating is not useful with the current dataset
+                ["max_rating"]
             ),
             (
                 "passthrough",
-                sklearn.compose.make_column_selector(dtype_include=bool)
+                BINARY_FEATURES
             ),
             verbose_feature_names_out=False
         ),
@@ -225,9 +231,8 @@ class LimeWrapper:
         self.input_fixer = make_pipeline(regressor=None, ohe=False, scale_numeric=False)
         X_train_fixed = self.input_fixer.fit_transform(X_train)
 
-        # Encode categorical features as integers. This transformation is reversed in predict_fn.
-        categorical_features = [col for col in X_train_fixed.columns if col not in NUMERIC_FEATURES]
-        self.encoder = PartialOrdinalEncoder(categorical_features)
+        # Encode categorical & binary features as integers. This transformation is reversed in predict_fn.
+        self.encoder = PartialOrdinalEncoder(CATEGORICAL_FEATURES + BINARY_FEATURES)
         X_train_encoded = self.encoder.fit_transform(X_train_fixed)
 
         self.explainer = lime.lime_tabular.LimeTabularExplainer(
@@ -236,11 +241,11 @@ class LimeWrapper:
             feature_names=X_train_encoded.columns,
             categorical_features=[
                 X_train_encoded.columns.get_loc(feat)
-                for feat in categorical_features
+                for feat in CATEGORICAL_FEATURES + BINARY_FEATURES
             ],
             categorical_names={
                 X_train_encoded.columns.get_loc(feat): self.encoder.encoders[feat].categories_[0]
-                for feat in categorical_features
+                for feat in CATEGORICAL_FEATURES + BINARY_FEATURES
             },
             discretize_continuous=False,
             random_state=27
