@@ -51,7 +51,7 @@ class RawDatasetSchema(pa.DataFrameModel):
 
 # All other features used for training are either categorical or binary (including all derived features).
 NUMERIC_FEATURES = [
-    "duration_mins", "clock_limit_secs", "clock_increment_secs", "min_rated_games", "min_rating", "max_rating"
+    "duration_mins", "clock_limit_secs", "clock_increment_secs", "min_rated_games", "max_rating"
 ]
 
 
@@ -132,13 +132,13 @@ def ratings_to_quantiles(df: pd.DataFrame) -> pd.DataFrame:
     If ratings are already passed as quantiles, leaves them unchanged.
     Fills NAs in min_rating and max_rating as appropriate.
     """
-    if df.min_rating.max() > 1:
-        min_rating_norm = (df.min_rating - 1500) / 300
-        df = df.assign(min_rating=1 / (1 + np.exp(-min_rating_norm)))
-    if df.max_rating.max() > 1:
-        max_rating_norm = (df.max_rating - 1500) / 300
-        df = df.assign(max_rating=1 / (1 + np.exp(-max_rating_norm)))
-    return df.fillna({"min_rating": 0, "max_rating": 1})
+    for col in ["min_rating", "max_rating"]:
+        if col in df.columns:
+            if df[col].max() > 1:
+                norm = (df[col] - 1500) / 300
+                df = df.assign(**{col: 1 / (1 + np.exp(-norm))})
+            df = df.fillna({col: 1 if col == "max_rating" else 0})
+    return df
 
 
 def fill_na(df: pd.DataFrame) -> pd.DataFrame:
@@ -170,7 +170,7 @@ def make_pipeline(
             ),
             (
                 rating_scaler,
-                ["min_rating", "max_rating"]
+                ["max_rating"]    # min_rating is not useful with the current dataset
             ),
             (
                 "passthrough",
