@@ -92,7 +92,7 @@ def get_tournament_info(tournament_link_or_id: str) -> dict[str, tp.Any]:
 
 @app.get("/list_models")
 def list_models() -> list[str]:
-    return [path.stem for path in MODELS_DIR.glob("*.p")]
+    return sorted(path.stem for path in MODELS_DIR.glob("*.p"))
 
 
 @app.post("/predict_tsv/{model_name}")
