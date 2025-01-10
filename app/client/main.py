@@ -124,7 +124,7 @@ else:
     if st.session_state.get("predict_tsv_response"):
         response = st.session_state.predict_tsv_response
 
-        st.subheader(f"{st.session_state.tsv_file_name} :gray[{len(response["n_players_true"])} samples]")
+        st.subheader(f"{st.session_state.tsv_file_name} :gray[{len(response["n_players_pred"])} samples]")
 
         if response["metrics"] is not None:
             cols = st.columns(4)

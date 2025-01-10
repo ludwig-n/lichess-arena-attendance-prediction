@@ -38,7 +38,6 @@ class RegressionMetrics(pydantic.BaseModel):
 
 class PredictTsvResponse(pydantic.BaseModel):
     n_players_pred: list[float]
-    n_players_true: list[int]
     metrics: RegressionMetrics | None
 
 
@@ -114,7 +113,7 @@ def predict_tsv(model_name: str, tsv_file: fastapi.UploadFile) -> PredictTsvResp
     else:
         metrics = None
 
-    return PredictTsvResponse(n_players_pred=y_pred, n_players_true=y_true, metrics=metrics)
+    return PredictTsvResponse(n_players_pred=y_pred, metrics=metrics)
 
 
 @app.post("/predict_link/{model_name}")
