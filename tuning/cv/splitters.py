@@ -1,8 +1,10 @@
+import dataclasses
 import math
 import typing as tp
 
 import numpy as np
 import pandas as pd
+import sklearn.base
 
 
 class DataSplit:
@@ -32,10 +34,28 @@ class DataSplit:
         return ~self.val_idx
 
 
+@dataclasses.dataclass
+class CrossValidationResult:
+    mean_score: float
+    split_scores: list[float]
+
+
 class Splitter:
     def split(self, X: pd.DataFrame, y: pd.Series) -> tp.Generator[DataSplit, None, None]:
         """Generates a DataSplit object for each split used in cross-validation."""
         raise NotImplementedError()    # abstract method
+
+    def cross_validate(
+        self, estimator: sklearn.base.BaseEstimator, X: pd.DataFrame, y: pd.Series, scorer: tp.Callable | None = None
+    ) -> CrossValidationResult:
+        scores = []
+        for split in self.split(X, y):
+            estimator = sklearn.base.clone(estimator).fit(split.X_train, split.y_train)
+            if scorer is None:
+                scores.append(estimator.score(split.X_val, split.y_val))
+            else:
+                scores.append(scorer(split.y_val, estimator.predict(split.X_val)))
+        return CrossValidationResult(mean_score=np.mean(scores), split_scores=scores)
 
 
 class LeaveOneOutSplitter(Splitter):
