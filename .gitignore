@@ -3,7 +3,6 @@
 __pycache__/
 *.egg-info/
 
-data/
 models/
 results/
 venv/
