@@ -49,7 +49,7 @@ def run_genetic_search(X_train, y_train, save_path, n_individuals=50, n_generati
     algorithm = gentun.algorithms.Tournament(population)
     algorithm.run(generations=n_generations)
     with open(save_path, "wb") as fout:
-        pickle.dump(population, fout)
+        pickle.dump(algorithm.population, fout)
 
 
 def run_grid_search(X_train, y_train, save_path, gene_samples=(4, 4, 4, 4, 4)):
