@@ -1,6 +1,6 @@
 ## Lichess Arena Attendance Prediction ♟️
 
-A project that uses classic ML regression models to predict the number of players who will join a tournament on [Lichess.org](https://lichess.org).
+A project that uses linear, random forest & gradient boosting models to predict the number of players who will join an online chess tournament on [Lichess.org](https://lichess.org).
 
 ### Installation
 
@@ -16,14 +16,14 @@ After these steps, you should be able to run all the scripts and notebooks in th
 
 ### Project structure
 
-- [`data_collection`](data_collection): scripts that download the data for the project and compile it into TSV dataset files.
+- [`data_collection`](data_collection): scripts that were used to download the data for the project and compile it into TSV dataset files.
     - [`get_tournament_lists.py`](data_collection/get_tournament_lists.py): downloads tournament lists from the [Lichess tournament history page](https://lichess.org/tournament/history) for a given time period and saves the available information in TSV format (note that this is not the final dataset format).
     - [`get_tournament_info.py`](data_collection/get_tournament_info.py): downloads detailed info on these tournaments from the Lichess API and saves it in NDJSON format.
-    - [`make_dataset.py`](data_collection/make_dataset.py): processes the NDJSON files into a TSV dataset.
+    - [`make_dataset.py`](data_collection/make_dataset.py): converts the NDJSON files into a TSV dataset.
 
 - [`data/tournament_dataset`](data/tournament_dataset): the dataset used for training the models, comprising all Lichess tournaments listed in the tournament history page from 2023-01-01 to 2024-12-15.
 
-- [`preprocessing`](preprocessing): code for data preprocessing. This folder is installed as an editable module in the project environment.
+- [`preprocessing`](preprocessing): code for data preprocessing. This folder is installed as an editable module in the project virtual environment.
 
 - [`eda`](eda): exploratory data analysis.
     - [`eda.ipynb`](eda/eda.ipynb): the main EDA notebook.
@@ -38,6 +38,8 @@ After these steps, you should be able to run all the scripts and notebooks in th
         - [`visualize_methods.ipynb`](tuning/cv/visualize_methods.ipynb): descriptions and visualizations for these methods.
         - [`compare_methods.ipynb`](tuning/cv/compare_methods.ipynb): a quality and performance comparison of these methods.
     - [`search.py`](tuning/search.py): a script that uses grid search and a genetic algorithm from the [gentun](https://github.com/gmontamat/gentun) library to perform hyperparameter search for the gradient boosting model. Saves the results (gentun `Population` objects) to pickle files for later analysis.
+    - [`grid_vs_genetic.ipynb`](tuning/grid_vs_genetic.ipynb): an analysis of these results, comparing the two hyperparameter search methods.
+    - [`train_tuned.py`](tuning/train_tuned.py): a script that trains a gradient boosting model with the best found hyperparameters.
 
 - [`app`](app): a web app that provides a friendly interface to the models.
     - [`README.md`](app/README.md): a more detailed description of the app components.
