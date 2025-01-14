@@ -37,7 +37,7 @@ class GradientBoostingHandler(gentun.models.base.Handler):
         return self.splitter.cross_validate(self.model, x_train, y_train).mean_score
 
 
-def run_genetic_search(X_train, y_train, save_path, n_individuals=20, n_generations=50, random_seed=27):
+def run_genetic_search(X_train, y_train, save_path, n_individuals=50, n_generations=20, random_seed=27):
     random.seed(random_seed)
     population = gentun.populations.Population(
         genes=GENES,
