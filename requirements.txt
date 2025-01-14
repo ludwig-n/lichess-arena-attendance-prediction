@@ -1,3 +1,4 @@
+altair==5.5.0
 beautifulsoup4==4.12.3
 fastapi[standard]==0.115.6
 gentun==0.0.3
