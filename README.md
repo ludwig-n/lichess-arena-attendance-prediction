@@ -39,6 +39,7 @@ After these steps, you should be able to run all the scripts and notebooks in th
         - [`compare_methods.ipynb`](tuning/cv/compare_methods.ipynb): a quality and performance comparison of these methods.
     - [`search.py`](tuning/search.py): a script that uses grid search and a genetic algorithm from the [gentun](https://github.com/gmontamat/gentun) library to perform hyperparameter search for the gradient boosting model. Saves the results (gentun `Population` objects) to pickle files for later analysis.
     - [`grid_vs_genetic.ipynb`](tuning/grid_vs_genetic.ipynb): an analysis of these results, comparing the two hyperparameter search methods.
+    - [`sensitivity.ipynb`](tuning/sensitivity.ipynb): an analysis of the model's sensitivity to different hyperparameters based on the grid search results.
     - [`train_tuned.py`](tuning/train_tuned.py): a script that trains a gradient boosting model with the best found hyperparameters.
 
 - [`app`](app): a web app that provides a friendly interface to the models.
