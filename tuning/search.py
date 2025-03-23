@@ -12,7 +12,7 @@ import cv.splitters
 import preprocessing
 
 
-GENES = [
+GRADIENT_BOOSTING_GENES = [
     gentun.genes.RandomLogUniform("learning_rate", 0.01, 1),
     gentun.genes.RandomChoice("max_leaf_nodes", list(2 ** np.arange(2, 9)) + [None]),
     gentun.genes.RandomChoice("max_depth", list(range(3, 10)) + [None]),
@@ -37,11 +37,11 @@ class GradientBoostingHandler(gentun.models.base.Handler):
         return self.splitter.cross_validate(self.model, x_train, y_train).mean_score
 
 
-def run_genetic_search(X_train, y_train, save_path, n_individuals=50, n_generations=20, random_seed=27):
+def run_genetic_search(handler, genes, X_train, y_train, save_path, n_individuals=50, n_generations=20, random_seed=27):
     random.seed(random_seed)
     population = gentun.populations.Population(
-        genes=GENES,
-        handler=GradientBoostingHandler,
+        genes=genes,
+        handler=handler,
         individuals=n_individuals,
         x_train=X_train,
         y_train=y_train
@@ -52,10 +52,10 @@ def run_genetic_search(X_train, y_train, save_path, n_individuals=50, n_generati
         pickle.dump(algorithm.population, fout)
 
 
-def run_grid_search(X_train, y_train, save_path, gene_samples=(4, 4, 4, 4, 4)):
+def run_grid_search(handler, genes, X_train, y_train, save_path, gene_samples=(4, 4, 4, 4, 4)):
     population = gentun.populations.Grid(
-        genes=GENES,
-        handler=GradientBoostingHandler,
+        genes=genes,
+        handler=handler,
         gene_samples=gene_samples,
         x_train=X_train,
         y_train=y_train
@@ -67,5 +67,9 @@ def run_grid_search(X_train, y_train, save_path, gene_samples=(4, 4, 4, 4, 4)):
 
 if __name__ == "__main__":
     X_train, y_train = preprocessing.read_tsv_with_all_features("data/tournament_dataset/train.tsv")
-    run_genetic_search(X_train, y_train, "tuning/results/genetic_population.p")
-    run_grid_search(X_train, y_train, "tuning/results/grid_population.p")
+    run_genetic_search(
+        GradientBoostingHandler, GRADIENT_BOOSTING_GENES, X_train, y_train, "tuning/results/genetic_population.p"
+    )
+    run_grid_search(
+        GradientBoostingHandler, GRADIENT_BOOSTING_GENES, X_train, y_train, "tuning/results/grid_population.p"
+    )
