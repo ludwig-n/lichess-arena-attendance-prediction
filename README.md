@@ -30,17 +30,18 @@ After these steps, you should be able to run all the scripts and notebooks in th
     - [`train_basic.py`](eda/train_basic.py): a script that trains 3 basic models (with mostly default parameters): ridge regression, random forest and gradient boosting.
     - [`importances.ipynb`](eda/importances.ipynb): a notebook analyzing feature importances for the basic random forest model.
 
-- [`models`](models): the trained models in pickle format. The random forest model is not included due to its large file size.
+- [`models`](models): the trained models in pickle format. The basic random forest model is not included due to its large file size. However, there is a smaller alternative ([`random_forest_small.p`](models/random_forest_small.p)) that shows similar quality.
 
 - [`tuning`](tuning): hyperparameter tuning.
     - [`cv`](tuning/cv): cross-validation methods.
         - [`splitters.py`](tuning/cv/splitters.py): code for 4 hand-implemented cross-validation methods.
         - [`visualize_methods.ipynb`](tuning/cv/visualize_methods.ipynb): descriptions and visualizations for these methods.
         - [`compare_methods.ipynb`](tuning/cv/compare_methods.ipynb): a quality and performance comparison of these methods.
-    - [`search.py`](tuning/search.py): a script that uses grid search and a genetic algorithm from the [gentun](https://github.com/gmontamat/gentun) library to perform hyperparameter search for the gradient boosting model. Saves the results (gentun `Population` objects) to pickle files for later analysis.
-    - [`grid_vs_genetic.ipynb`](tuning/grid_vs_genetic.ipynb): an analysis of these results, comparing the two hyperparameter search methods.
-    - [`sensitivity.ipynb`](tuning/sensitivity.ipynb): an analysis of the model's sensitivity to different hyperparameters based on the grid search results.
-    - [`train_tuned.py`](tuning/train_tuned.py): a script that trains a gradient boosting model with the best found hyperparameters.
+    - [`search.py`](tuning/search.py): a script that uses grid search and a genetic algorithm from the [gentun](https://github.com/gmontamat/gentun) library to perform hyperparameter search. Saves the results in pickle and CSV format.
+    - [`grid_vs_genetic.ipynb`](tuning/grid_vs_genetic.ipynb): a comparison of the two hyperparameter search methods.
+    - [`sensitivity.ipynb`](tuning/sensitivity.ipynb): an analysis of the gradient boosting model's sensitivity to different hyperparameters based on the grid search results.
+    - [`train_tuned_gb.py`](tuning/train_tuned_gb.py): a script that trains a gradient boosting model with the best found hyperparameters.
+    - [`train_small_rf.py`](tuning/train_small_rf.py): a script that trains a smaller random forest model similar in quality to the basic model.
 
 - [`app`](app): a web app that provides a friendly interface to the models.
     - [`README.md`](app/README.md): a more detailed description of the app components.
