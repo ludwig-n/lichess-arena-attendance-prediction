@@ -8,6 +8,7 @@ import gentun.populations
 import numpy as np
 import pandas as pd
 import sklearn.ensemble
+import sklearn.linear_model
 
 import cv.splitters
 import preprocessing
@@ -17,9 +18,20 @@ def hash_dict(dct):
     return hash(tuple(dct.items())) % (2 ** 32)
 
 
-class GradientBoostingHandler(gentun.models.base.Handler):
-    def __init__(self, n_folds=5, **kwargs):
+class CrossValidatedHandler(gentun.models.base.Handler):
+    def __init__(self, n_folds, **kwargs):
         super().__init__(**kwargs)
+        random_state = hash_dict(kwargs)
+        self.splitter = cv.splitters.RegressionStratifiedKFoldSplitter(k=n_folds, random_state=random_state)
+
+    def create_train_evaluate(self, x_train, y_train, x_test=None, y_test=None):
+        # Subclasses must define self.model
+        return self.splitter.cross_validate(self.model, x_train, y_train).mean_score
+
+
+class GradientBoostingHandler(CrossValidatedHandler):
+    def __init__(self, n_folds=5, **kwargs):
+        super().__init__(n_folds=n_folds, **kwargs)
         random_state = hash_dict(kwargs)
         self.model = preprocessing.make_pipeline(
             sklearn.ensemble.HistGradientBoostingRegressor(
@@ -27,23 +39,24 @@ class GradientBoostingHandler(gentun.models.base.Handler):
             ),
             ohe=False
         )
-        self.splitter = cv.splitters.RegressionStratifiedKFoldSplitter(k=n_folds, random_state=random_state)
-
-    def create_train_evaluate(self, x_train, y_train, x_test=None, y_test=None):
-        return self.splitter.cross_validate(self.model, x_train, y_train).mean_score
 
 
-class RandomForestHandler(gentun.models.base.Handler):
+class RandomForestHandler(CrossValidatedHandler):
     def __init__(self, n_folds=5, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(n_folds=n_folds, **kwargs)
         random_state = hash_dict(kwargs)
         self.model = preprocessing.make_pipeline(
             sklearn.ensemble.RandomForestRegressor(random_state=random_state, **kwargs)
         )
-        self.splitter = cv.splitters.RegressionStratifiedKFoldSplitter(k=n_folds, random_state=random_state)
 
-    def create_train_evaluate(self, x_train, y_train, x_test=None, y_test=None):
-        return self.splitter.cross_validate(self.model, x_train, y_train).mean_score
+
+class RidgeHandler(CrossValidatedHandler):
+    def __init__(self, n_folds=10, **kwargs):
+        super().__init__(n_folds=n_folds, **kwargs)
+        random_state = hash_dict(kwargs)
+        self.model = preprocessing.make_pipeline(
+            sklearn.linear_model.Ridge(random_state=random_state, **kwargs)
+        )
 
 
 def save_population(population, pickle_path=None, csv_path=None):
@@ -150,4 +163,11 @@ if __name__ == "__main__":
             gene_samples=(10, 2),
             pickle_path="tuning/results/rf_grid_n_estimators_population.p",
             csv_path="tuning/results/rf_grid_n_estimators_table.csv"
+        )
+
+    elif model_type == "ridge":
+        genes = [gentun.genes.RandomLogUniform("alpha", 1, 100)]
+        run_grid_search(
+            RidgeHandler, genes, X_train, y_train,
+            gene_samples=(25,), csv_path="tuning/results/ridge_grid_table.csv"
         )
